@@ -13,7 +13,7 @@ import {
   statSync,
   existsSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import zlib from "node:zlib";
 
@@ -43,6 +43,45 @@ const CCUSAGE = findBin("ccusage");
 const CODEX_BIN = findBin("codex");
 const CODEX_SESSIONS = `${HOME}/.codex/sessions`;
 const now = Math.floor(Date.now() / 1000);
+
+// ── 자동 업데이트 (알림 + 원클릭) ──
+const VERSION = "1.1.0";
+const SELF_DIR = dirname(process.argv[1] || `${HOME}/.swiftbar-plugins/x`);
+const REPO_RAW =
+  "https://raw.githubusercontent.com/dennykim123/claude-codex-battery/main";
+const UPDATE_CACHE = `${HOME}/.claude/swiftbar/.update-check.json`;
+function cmpVer(a, b) {
+  const pa = String(a).split(".").map(Number);
+  const pb = String(b).split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) > (pb[i] || 0)) return 1;
+    if ((pa[i] || 0) < (pb[i] || 0)) return -1;
+  }
+  return 0;
+}
+// 캐시된 최신 버전을 읽고, 24h+ 지났으면 백그라운드로 GitHub VERSION만 조용히 확인
+// (렌더를 막지 않음 — codex 자동갱신과 동일한 spawn+unref 패턴)
+function getUpdateInfo() {
+  let cache = null;
+  try {
+    cache = JSON.parse(readFileSync(UPDATE_CACHE, "utf8"));
+  } catch {}
+  const age = cache?.checkedAt ? now - cache.checkedAt : Infinity;
+  if (age > 24 * 3600) {
+    try {
+      const cmd =
+        `latest=$(curl -fsL --max-time 8 "${REPO_RAW}/VERSION" 2>/dev/null | tr -d '[:space:]'); ` +
+        `[ -n "$latest" ] && printf '{"checkedAt":%s,"latest":"%s"}' "${now}" "$latest" > "${UPDATE_CACHE}"`;
+      const child = spawn("/bin/sh", ["-c", cmd], {
+        detached: true,
+        stdio: "ignore",
+      });
+      child.unref();
+    } catch {}
+  }
+  const latest = cache?.latest;
+  return { latest, hasUpdate: !!latest && cmpVer(latest, VERSION) > 0 };
+}
 
 // ══ 배터리 아이콘 PNG 렌더 (순수 JS, node:zlib만) ══════════
 const CRC = (() => {
@@ -640,6 +679,13 @@ if (!hasClaude && !hasCodex) {
   out.push("---");
 }
 
+// 새 버전이 있으면 원클릭 업데이트 (없으면 아무것도 안 보임)
+const upd = getUpdateInfo();
+if (upd.hasUpdate) {
+  out.push(
+    `🆕 v${upd.latest} 업데이트 (현재 v${VERSION}) | bash="${SELF_DIR}/ccb-update.sh" terminal=false refresh=true color=#28963f`,
+  );
+}
 out.push("🔄 지금 새로고침 | refresh=true");
 // ccusage가 있을 때만(선택 의존) 대시보드 바로가기 노출
 if (claude && !claude.error) {
@@ -647,5 +693,8 @@ if (claude && !claude.error) {
     `📊 ccusage 대시보드 열기 | bash="${CCUSAGE}" param1=blocks param2=--active terminal=true`,
   );
 }
+out.push(
+  `v${VERSION}  ·  Claude & Codex Usage Battery | size=11 color=#8b949e`,
+);
 
 console.log(out.join("\n"));
