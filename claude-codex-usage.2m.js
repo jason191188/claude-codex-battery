@@ -46,7 +46,7 @@ const CODEX_SESSIONS = `${HOME}/.codex/sessions`;
 const now = Math.floor(Date.now() / 1000);
 
 // ── 자동 업데이트 (알림 + 원클릭) ──
-const VERSION = "1.3.0";
+const VERSION = "1.3.1";
 const SELF_DIR = dirname(process.argv[1] || `${HOME}/.swiftbar-plugins/x`);
 const REPO_RAW =
   "https://raw.githubusercontent.com/dennykim123/claude-codex-battery/main";
@@ -802,11 +802,15 @@ if (!hasClaude && !hasCodex) {
   out.push("---");
 }
 
-// 새 버전이 있으면 원클릭 업데이트 (없으면 아무것도 안 보임)
+// 새 버전이 있으면 강조 원클릭 업데이트, 없어도 수동 업데이트 행은 항상 노출
 const upd = getUpdateInfo();
 if (upd.hasUpdate) {
   out.push(
     `🆕 v${upd.latest} 업데이트 (현재 v${VERSION}) | bash="${SELF_DIR}/.ccb-update.sh" terminal=false refresh=true color=#28963f`,
+  );
+} else {
+  out.push(
+    `⬆️ 지금 업데이트 — GitHub 최신으로 교체 (현재 v${VERSION}) | bash="${SELF_DIR}/.ccb-update.sh" terminal=false refresh=true`,
   );
 }
 out.push("🔄 지금 새로고침 | refresh=true");
@@ -827,7 +831,7 @@ out.push(
   );
 }
 out.push(
-  `⭐ by Denny Kim — github.com/dennykim123 | href=https://github.com/dennykim123/claude-codex-battery size=11 color=#8b949e`,
+  `⭐ github.com/dennykim123/claude-codex-battery | href=https://github.com/dennykim123/claude-codex-battery size=11 color=#8b949e`,
 );
 // 위젯 끄기 — SwiftBar의 플러그인 비활성화 URL. 재활성화: SwiftBar 메뉴 → Plugins
 out.push(

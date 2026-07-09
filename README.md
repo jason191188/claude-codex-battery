@@ -97,7 +97,7 @@ open -a SwiftBar
 
 ## Updating
 
-The widget checks GitHub for a newer version **at most once a day** — a tiny background request for the `VERSION` file. When a new version is out, a green **🆕 update** row appears in the dropdown; click it to replace the plugin in place and refresh (your previous copy is kept as `.bak`).
+The widget checks GitHub for a newer version **at most once a day** — a tiny background request for the `VERSION` file. When a new version is out, a green **🆕 update** row appears in the dropdown; click it to replace the plugin in place and refresh (your previous copy is kept as `.bak`). There's also an always-visible **⬆️ update now** row that replaces the plugin with the latest `main` on demand — no waiting for the daily check.
 
 Prefer to do it yourself? From your clone: `git pull && ./install.sh`.
 
