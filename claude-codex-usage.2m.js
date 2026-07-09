@@ -12,6 +12,7 @@ import {
   readdirSync,
   statSync,
   existsSync,
+  mkdirSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
@@ -45,7 +46,7 @@ const CODEX_SESSIONS = `${HOME}/.codex/sessions`;
 const now = Math.floor(Date.now() / 1000);
 
 // ── 자동 업데이트 (알림 + 원클릭) ──
-const VERSION = "1.1.1";
+const VERSION = "1.2.0";
 const SELF_DIR = dirname(process.argv[1] || `${HOME}/.swiftbar-plugins/x`);
 const REPO_RAW =
   "https://raw.githubusercontent.com/dennykim123/claude-codex-battery/main";
@@ -389,13 +390,93 @@ function getClaudeModels() {
   }
 }
 
-// ── 1c. Claude 실제 rate limit (usage-cache.json, Claude Code가 실시간 갱신) ──
+// ── 1c. Claude 실제 rate limit — Anthropic OAuth usage API 직접 조회 ──
+// 이 맥의 Claude Code 로그인 토큰(키체인)으로 /usage와 같은 데이터를 서버에서 직접
+// 가져온다. 수치는 계정 단위 합산이라 다른 디바이스·데스크톱앱·웹 사용분도 포함.
+// 실패 시 폴백: 자체 캐시(마지막 성공 응답) → 레거시 usage-cache.json 파일.
+const CLAUDE_STATE_DIR = `${HOME}/.claude/swiftbar`;
+const CLAUDE_USAGE_CACHE = `${CLAUDE_STATE_DIR}/.claude-usage.json`;
+const LEGACY_USAGE_FILES = [
+  `${HOME}/.claude/MEMORY/STATE/usage-cache.json`,
+  `${HOME}/.claude/PAI/MEMORY/STATE/usage-cache.json`,
+];
+
+// 토큰은 반환값으로만 존재 — 파일·로그·프로세스 인자 어디에도 남기지 않는다
+function readClaudeToken() {
+  // 옵트아웃: 키체인 접근/라이브 조회를 원치 않으면 `touch ~/.claude/swiftbar/.no-live`
+  // — 키체인 프롬프트에서 '거부'를 누르면 2분마다 다시 뜨므로, 그 대신 이 스위치를 쓴다.
+  if (existsSync(`${CLAUDE_STATE_DIR}/.no-live`)) return null;
+  try {
+    const raw = execSync(
+      'security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null',
+      { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+    const t = JSON.parse(raw)?.claudeAiOauth?.accessToken;
+    if (t) return t;
+  } catch {}
+  try {
+    // 키체인이 없는 환경(예: 수동 이전) 대비 — Claude Code의 파일 자격증명
+    const raw = readFileSync(`${HOME}/.claude/.credentials.json`, "utf8");
+    return JSON.parse(raw)?.claudeAiOauth?.accessToken ?? null;
+  } catch {}
+  return null;
+}
+
+function fetchClaudeUsageLive() {
+  const token = readClaudeToken();
+  if (!token) return null;
+  try {
+    // Authorization 헤더는 stdin(-H @-)으로 전달 — ps 프로세스 목록에 토큰 노출 방지
+    const raw = execSync(
+      `/usr/bin/curl -fsS --max-time 5 -H @- -H "anthropic-beta: oauth-2025-04-20" https://api.anthropic.com/api/oauth/usage`,
+      {
+        encoding: "utf8",
+        timeout: 8000,
+        input: `Authorization: Bearer ${token}\n`,
+        stdio: ["pipe", "pipe", "ignore"],
+      },
+    );
+    const d = JSON.parse(raw);
+    if (!d?.five_hour) return null;
+    try {
+      mkdirSync(CLAUDE_STATE_DIR, { recursive: true });
+      writeFileSync(
+        CLAUDE_USAGE_CACHE,
+        JSON.stringify({ fetchedAt: Math.floor(Date.now() / 1000), data: d }),
+      );
+    } catch {}
+    return { data: d, measuredAt: Math.floor(Date.now() / 1000), live: true };
+  } catch {
+    return null;
+  }
+}
+
+function readClaudeUsageFallback() {
+  try {
+    const c = JSON.parse(readFileSync(CLAUDE_USAGE_CACHE, "utf8"));
+    if (c?.data?.five_hour)
+      return { data: c.data, measuredAt: c.fetchedAt ?? 0, live: false };
+  } catch {}
+  for (const f of LEGACY_USAGE_FILES) {
+    try {
+      const d = JSON.parse(readFileSync(f, "utf8"));
+      if (d?.five_hour)
+        return {
+          data: d,
+          measuredAt: Math.floor(statSync(f).mtimeMs / 1000),
+          live: false,
+        };
+    } catch {}
+  }
+  return null;
+}
+
 // 5시간 세션 / 주간 전체 / Fable 주간(weekly_scoped) 사용률
 function getClaudeUsage() {
-  const f = `${HOME}/.claude/MEMORY/STATE/usage-cache.json`;
+  const src = fetchClaudeUsageLive() ?? readClaudeUsageFallback();
+  if (!src) return null;
+  const { data: d, measuredAt, live } = src;
   try {
-    const d = JSON.parse(readFileSync(f, "utf8"));
-    const measuredAt = Math.floor(statSync(f).mtimeMs / 1000);
     const toTs = (iso) => (iso ? Math.floor(Date.parse(iso) / 1000) : null);
     const win = (o) =>
       o ? { pct: o.utilization ?? 0, resetsAt: toTs(o.resets_at) } : null;
@@ -414,6 +495,7 @@ function getClaudeUsage() {
     }
     return {
       measuredAt,
+      live,
       fiveHour: win(d.five_hour),
       weekly: win(d.seven_day),
       fable,
@@ -603,7 +685,9 @@ if (hasClaude) {
     winRow("주간 남음 ", cusage.weekly);
     if (cusage.fable) winRow(`${cusage.fable.model} 남음`, cusage.fable);
     out.push(
-      `측정 ${fmtDur(now - cusage.measuredAt)} 전 (Claude 실시간) | size=11 color=#8b949e`,
+      cusage.live
+        ? `라이브 (Anthropic usage API — 전 디바이스 합산) | size=11 color=#8b949e`
+        : `측정 ${fmtDur(now - cusage.measuredAt)} 전 (캐시 폴백 — Claude Code 로그인·네트워크 확인) | size=11 color=#d29922`,
     );
   }
   if (claude && !claude.error) {

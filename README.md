@@ -17,7 +17,7 @@
 
 `C` = Claude · `X` = Codex. Each battery shows the **remaining %** of a limit window — full & green means plenty left, red means almost out. Click for a detailed breakdown with reset times.
 
-Built as a single [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin — one self-contained script, **no third-party libraries**. The battery icons are rendered as PNGs from scratch in pure JavaScript (`node:zlib` only), so there's no image library and no `npm install`. The only network call is an **optional once-a-day update check** ([see Updating](#updating)) — disable it and the widget makes none at all. (`ccusage` is an optional extra for the cost breakdown.)
+Built as a single [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin — one self-contained script, **no third-party libraries**. The battery icons are rendered as PNGs from scratch in pure JavaScript (`node:zlib` only), so there's no image library and no `npm install`. Network calls: **one to Anthropic's official usage endpoint** (the same data `/usage` shows, fetched with your own local Claude Code login — [see Privacy](#privacy--security)) and an **optional once-a-day update check** ([see Updating](#updating)). (`ccusage` is an optional extra for the cost breakdown.)
 
 ---
 
@@ -25,7 +25,7 @@ Built as a single [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin — on
 
 | Group | Batteries | Source |
 |-------|-----------|--------|
-| **`C` Claude** | 5-hour session · weekly · **Fable** (top-model weekly cap) | `~/.claude/MEMORY/STATE/usage-cache.json` — updated live by Claude Code |
+| **`C` Claude** | 5-hour session · weekly · **Fable** (top-model weekly cap) | Anthropic's OAuth usage API — queried live with your local Claude Code login; **account-level**, so usage from every device/surface is included |
 | **`X` Codex** | 5-hour · weekly (or credit balance on the premium plan) | `~/.codex/sessions/**/*.jsonl` → `rate_limits` |
 
 Click the widget for a dropdown with, per limit:
@@ -53,11 +53,11 @@ Colors follow a traffic-light scale: green ≥ 50 % left, amber < 50 %, red < 20
 | **macOS** | ✅ | — |
 | **[SwiftBar](https://github.com/swiftbar/SwiftBar)** | ✅ | `brew install swiftbar` |
 | **[bun](https://bun.sh)** | ✅ | `curl -fsSL https://bun.sh/install \| bash` |
-| **Claude Code** | ✅ for `C` batteries | needs `~/.claude/MEMORY/STATE/usage-cache.json` to exist |
+| **Claude Code** | ✅ for `C` batteries | just needs to be **logged in** on this Mac (the widget reuses its login to query the usage API) |
 | **Codex CLI** | optional | for the `X` batteries; without it, only Claude is shown |
 | **[ccusage](https://github.com/ryoppippi/ccusage)** | optional | adds the cost / token / per-model breakdown in the dropdown — **the battery works fully without it** |
 
-> **Note:** This widget reads *your own local usage files*. If you don't use Claude Code (or Codex), there simply won't be any data to display.
+> **Note:** This widget shows *your own account's* limits — via your local Claude Code login and your local Codex session logs. If you don't use Claude Code (or Codex), there simply won't be any data to display.
 
 ---
 
@@ -97,26 +97,27 @@ open -a SwiftBar
 
 ## Updating
 
-The widget checks GitHub for a newer version **at most once a day** — a tiny background request that is the *only* network call it ever makes. When a new version is out, a green **🆕 update** row appears in the dropdown; click it to replace the plugin in place and refresh (your previous copy is kept as `.bak`).
+The widget checks GitHub for a newer version **at most once a day** — a tiny background request for the `VERSION` file. When a new version is out, a green **🆕 update** row appears in the dropdown; click it to replace the plugin in place and refresh (your previous copy is kept as `.bak`).
 
 Prefer to do it yourself? From your clone: `git pull && ./install.sh`.
 
-To turn the check off entirely, comment out the `getUpdateInfo()` call near the bottom of the script — then the widget makes **zero** network calls.
+To turn the check off entirely, comment out the `getUpdateInfo()` call near the bottom of the script — then the only network call left is the Anthropic usage query.
 
 ---
 
 ## Privacy & security
 
-- **No usage data leaves your machine.** Limits are read from local files and rendered locally; the only network call is the optional daily update check above.
-- **No secrets read.** It never touches `auth.json`, credentials, or keychains.
+- **Claude limits come straight from Anthropic.** The widget reads your Claude Code OAuth token from the macOS Keychain (item `Claude Code-credentials`) and calls `api.anthropic.com/api/oauth/usage` — the same endpoint `/usage` uses. The token is sent **only to api.anthropic.com**, passed via stdin (never visible in `ps`), and never written to disk or logs. macOS may show a one-time Keychain permission prompt — click **Always Allow**. (Clicking *Deny* makes macOS re-prompt on every refresh — if you'd rather the widget never touch the Keychain, run `touch ~/.claude/swiftbar/.no-live` instead; it then reads local cache files only, like v1.1.)
+- **No other secrets read.** Codex `auth.json` and API keys are never touched.
+- **No usage data leaves your machine.** Nothing is uploaded anywhere; the only outbound calls are the Anthropic usage query above and the optional daily update check ([Updating](#updating)).
 - **No conversation content.** From Codex session logs it parses only the `rate_limits` object (numbers), never the messages.
-- Usage values are read at runtime — **nothing is baked into the code**, so sharing the script shares no data.
+- **Auditable in one sitting.** The whole widget is a single dependency-free script — grep for `curl`/`fetch` and you've seen every network call it can make.
 
 ---
 
 ## How accurate / in-sync is it?
 
-**Claude — effectively real-time.** The limits come from `usage-cache.json`, the *same* rate-limit data Claude Code uses for its own `/usage`. The widget just reads that file (every 2 min), so its numbers track Claude's. Measured on a live machine: the widget's **weekly and Fable readings matched the source file exactly**; the 5-hour figure differed only by the live drift between two reads a minute apart.
+**Claude — live.** Every refresh queries Anthropic's usage API directly with your local Claude Code login — the *same* server-side data `/usage` shows, so the numbers match it by construction. Because the limits are **account-level**, usage from every surface and device (terminal, desktop app, web, another machine) is already included. If the query fails (offline, logged out), the widget falls back to its last successful response and labels the reading with its age in amber.
 
 **Codex — as fresh as your last Codex run.** Codex writes rate-limit data to its session logs *only while you use it*, and records no reset time. So the value is a snapshot from your most recent session — the dropdown labels it "measured N ago" and warns past 3h. Run Codex and it re-syncs instantly.
 
@@ -129,7 +130,7 @@ To turn the check off entirely, comment out the `getUpdateInfo()` call near the 
 The whole thing is one `.js` file run by bun on a timer.
 
 - **Battery icons** are drawn pixel-by-pixel into an RGBA buffer and encoded to PNG using only `node:zlib` (hand-rolled CRC32 + IHDR/IDAT/IEND chunks). A 5×7 bitmap font renders the numbers and the `C`/`X` group labels. SwiftBar displays the PNG at pixels ÷ 2 pt.
-- **Claude limits** come from `usage-cache.json`, which Claude Code keeps current. The Fable cap is the `weekly_scoped` entry.
+- **Claude limits** are fetched from Anthropic's OAuth usage endpoint using the Claude Code login token in your Keychain, with the last good response cached at `~/.claude/swiftbar/.claude-usage.json` as an offline fallback. The Fable cap is the `weekly_scoped` entry.
 - **Codex limits** come from the newest session's `rate_limits`. The premium plan reports a `credits` object instead of percentages when exhausted; the widget handles both shapes.
 
 ### Codex has one quirk
@@ -151,6 +152,7 @@ If you'd rather it never spend tokens on its own, comment out the `maybeAutoRefr
 | Battery size | `drawCapsule`: `bw` / `bh` (5×7 font sets the floor) |
 | Color thresholds | `heatRemain` / `heatRemainHex` (20 % / 50 %) |
 | Disable Codex auto-refresh | comment out `maybeAutoRefreshCodex(codex)` |
+| Disable live Claude API / Keychain access | `touch ~/.claude/swiftbar/.no-live` (falls back to local cache files) |
 | Which Claude limits to show | the `battItems.push(...)` block |
 
 ---
