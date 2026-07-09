@@ -113,6 +113,16 @@ To turn the check off entirely, comment out the `getUpdateInfo()` call near the 
 
 ---
 
+## How accurate / in-sync is it?
+
+**Claude — effectively real-time.** The limits come from `usage-cache.json`, the *same* rate-limit data Claude Code uses for its own `/usage`. The widget just reads that file (every 2 min), so its numbers track Claude's. Measured on a live machine: the widget's **weekly and Fable readings matched the source file exactly**; the 5-hour figure differed only by the live drift between two reads a minute apart.
+
+**Codex — as fresh as your last Codex run.** Codex writes rate-limit data to its session logs *only while you use it*, and records no reset time. So the value is a snapshot from your most recent session — the dropdown labels it "measured N ago" and warns past 3h. Run Codex and it re-syncs instantly.
+
+**TL;DR** — Claude is live (same source as `/usage`); Codex is a clearly-labeled snapshot from your last session, not a live feed.
+
+---
+
 ## How it works
 
 The whole thing is one `.js` file run by bun on a timer.
