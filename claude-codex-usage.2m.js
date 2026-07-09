@@ -46,7 +46,7 @@ const CODEX_SESSIONS = `${HOME}/.codex/sessions`;
 const now = Math.floor(Date.now() / 1000);
 
 // ── 자동 업데이트 (알림 + 원클릭) ──
-const VERSION = "1.2.1";
+const VERSION = "1.2.2";
 const SELF_DIR = dirname(process.argv[1] || `${HOME}/.swiftbar-plugins/x`);
 const REPO_RAW =
   "https://raw.githubusercontent.com/dennykim123/claude-codex-battery/main";
@@ -178,6 +178,9 @@ const NUM = {
 };
 // altCol/boundaryX 지정 시: 픽셀 x가 채움 경계(boundaryX) 왼쪽이면 altCol(밝은 채움 위 대비),
 // 오른쪽(빈 배경)이면 col. 지정 없으면 col 단색(그룹 라벨용).
+// '1'은 시각폭이 좁아 전진폭 4px (커닝) — "100"이 14→12px가 되어
+// 캡슐(내폭 14px) 안에서 테두리에 물리지 않는다.
+const chAdv = (ch) => (ch === "1" ? 4 : 5);
 function drawNum(cv, x, y, str, col, altCol, boundaryX) {
   let cx = x;
   for (const ch of str) {
@@ -189,11 +192,11 @@ function drawNum(cv, x, y, str, col, altCol, boundaryX) {
             const px = cx + c;
             cv.set(px, y + r, altCol && px < boundaryX ? altCol : col);
           }
-    cx += 5;
+    cx += chAdv(ch);
   }
   return cx;
 }
-const numW = (s) => s.length * 5 - 1;
+const numW = (s) => [...s].reduce((w, ch) => w + chAdv(ch), 0) - 1;
 // 실제 macOS 배터리 인디케이터 색 (Apple HIG system colors, 다크/라이트 각각)
 function heatRemain(r, dark) {
   if (r <= 20) return dark ? [255, 69, 58] : [255, 59, 48]; // systemRed
@@ -204,7 +207,7 @@ const heatRemainHex = (r) =>
   r <= 20 ? "#FF453A" : r < 50 ? "#FFD60A" : "#30D158"; // 드롭다운 게이지 (다크 기준)
 // 캡슐 하나: 테두리 + 잔량 채움 + 안에 잔량 숫자(100 포함, 항상 표시)
 function drawCapsule(cv, x, midY, remain, ink, dark) {
-  const bw = 18,
+  const bw = 16,
     bh = 10,
     by = midY - Math.floor(bh / 2);
   _stroke(cv, x, by, bw, bh, ink);
@@ -224,12 +227,12 @@ function drawCapsule(cv, x, midY, remain, ink, dark) {
 // 캡슐 N개(items=[{label,remain}]). 그룹(C=Claude / X=Codex) 앞에 라벨 문자.
 function renderBatteryImage(dark, items) {
   const ink = dark ? [235, 235, 235] : [45, 45, 45];
-  const CAPW = 20,
-    GAP = 5,
-    GGAP = 10,
-    PAD = 2,
-    LBLGAP = 3;
-  const H = 12;
+  const CAPW = 18,
+    GAP = 3,
+    GGAP = 7,
+    PAD = 1,
+    LBLGAP = 2;
+  const H = 10; // 캡슐 높이에 딱 맞춤(여백 0) — 캡슐 10px 자체가 6행 폰트+테두리+숨구멍의 하한
   const midY = Math.floor(H / 2);
   // 폭 계산 (그룹 라벨 포함)
   let W = PAD * 2;
