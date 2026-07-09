@@ -46,7 +46,7 @@ const CODEX_SESSIONS = `${HOME}/.codex/sessions`;
 const now = Math.floor(Date.now() / 1000);
 
 // ── 자동 업데이트 (알림 + 원클릭) ──
-const VERSION = "1.2.0";
+const VERSION = "1.2.1";
 const SELF_DIR = dirname(process.argv[1] || `${HOME}/.swiftbar-plugins/x`);
 const REPO_RAW =
   "https://raw.githubusercontent.com/dennykim123/claude-codex-battery/main";
@@ -789,6 +789,13 @@ if (claude && !claude.error) {
 }
 out.push(
   `v${VERSION}  ·  Claude & Codex Usage Battery | size=11 color=#8b949e`,
+);
+out.push(
+  `⭐ by Denny Kim — github.com/dennykim123 | href=https://github.com/dennykim123/claude-codex-battery size=11 color=#8b949e`,
+);
+// 위젯 끄기 — SwiftBar의 플러그인 비활성화 URL. 재활성화: SwiftBar 메뉴 → Plugins
+out.push(
+  `✕ 위젯 끄기 (SwiftBar 설정에서 재활성화) | href=swiftbar://disableplugin?plugin=claude-codex-usage size=11 color=#8b949e`,
 );
 
 console.log(out.join("\n"));
