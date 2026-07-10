@@ -51,8 +51,8 @@ Colors follow a 5-step scale on the remaining %: 🟢 green (> 80) · 🟩 lime 
 | | Required? | Install |
 |---|---|---|
 | **macOS** | ✅ | — |
-| **[SwiftBar](https://github.com/swiftbar/SwiftBar)** | ✅ | `brew install swiftbar` |
-| **[bun](https://bun.sh)** | ✅ | `curl -fsSL https://bun.sh/install \| bash` |
+| **[SwiftBar](https://github.com/swiftbar/SwiftBar)** | ✅ | **`install.sh` offers to install it** (via Homebrew, or the GitHub release if you don't have brew) |
+| **[bun](https://bun.sh)** | ✅ | **`install.sh` offers to install it** (official installer: `curl -fsSL https://bun.sh/install \| bash`) |
 | **Claude Code** | ✅ for `C` batteries | just needs to be **logged in** on this Mac (the widget reuses its login to query the usage API) |
 | **Codex CLI** | optional | for the `X` batteries; without it, only Claude is shown |
 | **[ccusage](https://github.com/ryoppippi/ccusage)** | optional | adds the cost / token / per-model breakdown in the dropdown — **the battery works fully without it** |
@@ -71,7 +71,7 @@ cd claude-codex-battery
 
 `install.sh` will:
 
-1. Verify **bun** and **SwiftBar** are present (and tell you how to install them if not)
+1. Check for **bun** and **SwiftBar** — and **offer to install them** if missing (bun via its official installer; SwiftBar via Homebrew, or the GitHub release zip if you don't have brew)
 2. Copy the plugin into `~/.swiftbar-plugins/`, rewriting the shebang to your machine's `bun` path *(SwiftBar runs plugins with a minimal `PATH`, so an absolute shebang is required)*
 3. Point SwiftBar at the plugin folder and launch it
 4. Register SwiftBar as a login item, so the battery comes back automatically after a reboot

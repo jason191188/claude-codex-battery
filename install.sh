@@ -6,20 +6,64 @@ cd "$(dirname "$0")"
 echo "🔋 Claude & Codex Usage Battery — 설치"
 echo "────────────────────────────────────"
 
-# 1) bun (필수)
-if ! command -v bun >/dev/null 2>&1; then
-  echo "❌ bun이 없습니다. 먼저 설치하세요:"
-  echo "   curl -fsSL https://bun.sh/install | bash"
+# 사용자 확인 (TTY가 아니면 — curl | bash 등 — 자동 진행)
+ask() {
+  [ -t 0 ] || return 0
+  read -r -p "$1 [Y/n] " a
+  case "$a" in n | N | no | NO) return 1 ;; *) return 0 ;; esac
+}
+
+# 1) bun (필수 — 없으면 공식 스크립트로 설치 제안)
+if ! command -v bun >/dev/null 2>&1 && [ ! -x "$HOME/.bun/bin/bun" ]; then
+  echo "ⓘ  bun이 없습니다."
+  if ask "   지금 설치할까요? (curl -fsSL https://bun.sh/install | bash)"; then
+    curl -fsSL https://bun.sh/install | bash
+  else
+    echo "❌ bun 없이는 진행할 수 없습니다. 직접 설치 후 다시 실행하세요."
+    exit 1
+  fi
+fi
+# 방금 설치한 경우 현재 셸 PATH에 없을 수 있음 → ~/.bun/bin 폴백
+BUN=$(command -v bun 2>/dev/null || echo "$HOME/.bun/bin/bun")
+if [ ! -x "$BUN" ]; then
+  echo "❌ bun 설치를 확인하지 못했습니다. 새 터미널에서 다시 실행해 보세요."
   exit 1
 fi
-BUN=$(command -v bun)
 echo "✅ bun: $BUN"
 
-# 2) SwiftBar (필수)
+# 2) SwiftBar (필수 — 없으면 brew 또는 GitHub 릴리스로 설치 제안)
 if [ ! -d "/Applications/SwiftBar.app" ]; then
-  echo "❌ SwiftBar가 없습니다. 먼저 설치하세요:"
-  echo "   brew install swiftbar"
-  exit 1
+  echo "ⓘ  SwiftBar가 없습니다."
+  if command -v brew >/dev/null 2>&1; then
+    if ask "   Homebrew로 지금 설치할까요? (brew install --cask swiftbar)"; then
+      brew install --cask swiftbar
+    else
+      echo "❌ SwiftBar 없이는 진행할 수 없습니다."
+      exit 1
+    fi
+  else
+    if ask "   GitHub 최신 릴리스를 받아 /Applications에 설치할까요?"; then
+      ZIP_URL=$(curl -fsSL --max-time 15 https://api.github.com/repos/swiftbar/SwiftBar/releases/latest |
+        grep -oE '"browser_download_url": *"[^"]+\.zip"' | grep -oE 'https://[^"]+' | head -1)
+      if [ -z "$ZIP_URL" ]; then
+        echo "❌ 릴리스 주소를 찾지 못했습니다. 직접 설치하세요: https://github.com/swiftbar/SwiftBar/releases"
+        exit 1
+      fi
+      TMPD=$(mktemp -d)
+      curl -fL --max-time 120 -o "$TMPD/SwiftBar.zip" "$ZIP_URL"
+      unzip -q "$TMPD/SwiftBar.zip" -d "$TMPD"
+      mv "$TMPD/SwiftBar.app" /Applications/
+      rm -rf "$TMPD"
+      echo "   (첫 실행 시 macOS가 '인터넷에서 받은 앱' 확인 창을 띄울 수 있습니다 — 열기를 누르세요)"
+    else
+      echo "❌ SwiftBar 없이는 진행할 수 없습니다."
+      exit 1
+    fi
+  fi
+  if [ ! -d "/Applications/SwiftBar.app" ]; then
+    echo "❌ SwiftBar 설치에 실패했습니다."
+    exit 1
+  fi
 fi
 echo "✅ SwiftBar"
 
