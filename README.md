@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/SwiftBar-plugin-FF9500" alt="SwiftBar plugin">
   <img src="https://img.shields.io/badge/runtime-bun-14151A?logo=bun&logoColor=white" alt="Runtime: bun">
   <img src="https://img.shields.io/badge/dependencies-none-brightgreen.svg" alt="Zero dependencies">
-  <a href="https://github.com/dennykim123/claude-codex-battery/stargazers"><img src="https://img.shields.io/github/stars/dennykim123/claude-codex-battery?style=flat&logo=github" alt="GitHub stars"></a>
+  <a href="https://github.com/jason191188/claude-codex-battery/stargazers"><img src="https://img.shields.io/github/stars/jason191188/claude-codex-battery?style=flat&logo=github" alt="GitHub stars"></a>
 </p>
 
 > A macOS menu bar widget that shows your remaining **Claude Code** and **Codex** usage limits as battery icons — so you never have to open `/usage` again.
@@ -15,9 +15,9 @@
   <img src="docs/menubar@2x.png" alt="Menu bar battery widget" width="280">
 </p>
 
-`C` = Claude · `X` = Codex. Each battery shows the **remaining %** of a limit window — full & green means plenty left, red means almost out. Click for a detailed breakdown with reset times.
+`C` = Claude · `X` = Codex. Each battery's **fill and color** show how much of a limit window is left — a full green battery means plenty, an empty red one means almost out. Click for a detailed breakdown with exact percentages and reset times.
 
-Built as a single [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin — one self-contained script, **no third-party libraries**. The battery icons are rendered as PNGs from scratch in pure JavaScript (`node:zlib` only), so there's no image library and no `npm install`. Network calls: **one to Anthropic's official usage endpoint** (the same data `/usage` shows, fetched with your own local Claude Code login — [see Privacy](#privacy--security)) and an **optional once-a-day update check** ([see Updating](#updating)). (`ccusage` is an optional extra for the cost breakdown.)
+Built as a single [SwiftBar](https://github.com/swiftbar/SwiftBar) plugin — one self-contained script, **no third-party libraries** and no `npm install`. The battery icons are **native macOS SF Symbols** (vector — crisp at any resolution), tinted per-battery by SwiftBar. Network calls: **one to Anthropic's official usage endpoint** (the same data `/usage` shows, fetched with your own local Claude Code login — [see Privacy](#privacy--security)) and an **optional once-a-day update check** ([see Updating](#updating)). (`ccusage` is an optional extra for the cost breakdown.)
 
 ---
 
@@ -42,7 +42,7 @@ Codex · prolite
   weekly         ▕████████████████▋░░░▏ 83%  (used 17%)
 ```
 
-Colors follow a traffic-light scale: green ≥ 50 % left, amber < 50 %, red < 20 %.
+Colors follow a 5-step scale on the remaining %: 🟢 green (> 80) · 🟩 lime (> 60) · 🟡 yellow (> 40) · 🟠 orange (> 20) · 🔴 red (≤ 20).
 
 ---
 
@@ -64,7 +64,7 @@ Colors follow a traffic-light scale: green ≥ 50 % left, amber < 50 %, red < 20
 ## Install
 
 ```bash
-git clone https://github.com/dennykim123/claude-codex-battery.git
+git clone https://github.com/jason191188/claude-codex-battery.git
 cd claude-codex-battery
 ./install.sh
 ```
@@ -129,7 +129,7 @@ To turn the check off entirely, comment out the `getUpdateInfo()` call near the 
 
 The whole thing is one `.js` file run by bun on a timer.
 
-- **Battery icons** are drawn pixel-by-pixel into an RGBA buffer and encoded to PNG using only `node:zlib` (hand-rolled CRC32 + IHDR/IDAT/IEND chunks). A 5×7 bitmap font renders the numbers and the `C`/`X` group labels. SwiftBar displays the PNG at pixels ÷ 2 pt.
+- **Battery icons** are native macOS **SF Symbols** (`battery.0` / `.25` / `.50` / `.75` / `.100`), rendered inline in the menu bar and tinted per-battery with SwiftBar's `sfcolor` (a 5-step color scale). Being vector, they stay crisp at any resolution — no bitmaps, no image library. The fill maps to the nearest quarter; the *exact* percentage lives in the dropdown. A `C` / `X` text label marks the groups, and the big/small size presets map to the SF symbol `size=`.
 - **Claude limits** are fetched from Anthropic's OAuth usage endpoint using the Claude Code login token in your Keychain, with the last good response cached at `~/.claude/swiftbar/.claude-usage.json` as an offline fallback. The Fable cap is the `weekly_scoped` entry.
 - **Codex limits** come from the newest session's `rate_limits`. The premium plan reports a `credits` object instead of percentages when exhausted; the widget handles both shapes.
 

@@ -3,7 +3,7 @@
 // <xbar.version>v3.0</xbar.version>
 // <xbar.author>개발부스러기</xbar.author>
 // <xbar.desc>Claude Code 5시간 블록 + Codex rate limit을 메뉴바에 배터리 아이콘으로 상시 표시</xbar.desc>
-// SwiftBar 플러그인: 1분마다 갱신. 메뉴바=배터리 잔량 아이콘(자체 PNG), 클릭=상세 게이지.
+// SwiftBar 플러그인: 2분마다 갱신. 메뉴바=네이티브 SF Symbol 배터리(벡터), 클릭=상세 게이지.
 
 import { execSync, spawn } from "node:child_process";
 import {
@@ -16,7 +16,6 @@ import {
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
-import zlib from "node:zlib";
 
 const HOME = homedir();
 // 바이너리 경로 자동 탐지 (환경별로 다름 — 이식성)
@@ -46,10 +45,10 @@ const CODEX_SESSIONS = `${HOME}/.codex/sessions`;
 const now = Math.floor(Date.now() / 1000);
 
 // ── 자동 업데이트 (알림 + 원클릭) ──
-const VERSION = "1.3.1";
+const VERSION = "1.4.0";
 const SELF_DIR = dirname(process.argv[1] || `${HOME}/.swiftbar-plugins/x`);
 const REPO_RAW =
-  "https://raw.githubusercontent.com/dennykim123/claude-codex-battery/main";
+  "https://raw.githubusercontent.com/jason191188/claude-codex-battery/main";
 const UPDATE_CACHE = `${HOME}/.claude/swiftbar/.update-check.json`;
 function cmpVer(a, b) {
   const pa = String(a).split(".").map(Number);
@@ -84,83 +83,6 @@ function getUpdateInfo() {
   return { latest, hasUpdate: !!latest && cmpVer(latest, VERSION) > 0 };
 }
 
-// ══ 배터리 아이콘 PNG 렌더 (순수 JS, node:zlib만) ══════════
-const CRC = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    t[n] = c >>> 0;
-  }
-  return t;
-})();
-function crc32(buf) {
-  let c = 0xffffffff;
-  for (let i = 0; i < buf.length; i++) c = CRC[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
-}
-function encodePNG(w, h, rgba) {
-  const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-  const mk = (type, data) => {
-    const len = Buffer.alloc(4);
-    len.writeUInt32BE(data.length, 0);
-    const body = Buffer.concat([Buffer.from(type), data]);
-    const crc = Buffer.alloc(4);
-    crc.writeUInt32BE(crc32(body), 0);
-    return Buffer.concat([len, body, crc]);
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(w, 0);
-  ihdr.writeUInt32BE(h, 4);
-  ihdr[8] = 8;
-  ihdr[9] = 6;
-  const stride = w * 4;
-  const raw = Buffer.alloc((stride + 1) * h);
-  for (let y = 0; y < h; y++) {
-    raw[y * (stride + 1)] = 0;
-    rgba.copy(raw, y * (stride + 1) + 1, y * stride, y * stride + stride);
-  }
-  const idat = zlib.deflateSync(raw, { level: 9 });
-  return Buffer.concat([
-    sig,
-    mk("IHDR", ihdr),
-    mk("IDAT", idat),
-    mk("IEND", Buffer.alloc(0)),
-  ]);
-}
-const SCALE = 2;
-function makeCanvas(wl, hl) {
-  const w = wl * SCALE,
-    h = hl * SCALE;
-  const buf = Buffer.alloc(w * h * 4, 0);
-  const set = (x, y, col) => {
-    if (x < 0 || y < 0 || x >= wl || y >= hl) return;
-    const [r, g, b, a = 255] = col;
-    for (let dy = 0; dy < SCALE; dy++)
-      for (let dx = 0; dx < SCALE; dx++) {
-        const px = ((y * SCALE + dy) * w + (x * SCALE + dx)) * 4;
-        buf[px] = r;
-        buf[px + 1] = g;
-        buf[px + 2] = b;
-        buf[px + 3] = a;
-      }
-  };
-  return { w, h, buf, set };
-}
-const _rect = (cv, x, y, rw, rh, col) => {
-  for (let j = 0; j < rh; j++)
-    for (let i = 0; i < rw; i++) cv.set(x + i, y + j, col);
-};
-const _stroke = (cv, x, y, rw, rh, col) => {
-  for (let i = 1; i < rw - 1; i++) {
-    cv.set(x + i, y, col);
-    cv.set(x + i, y + rh - 1, col);
-  }
-  for (let j = 1; j < rh - 1; j++) {
-    cv.set(x, y + j, col);
-    cv.set(x + rw - 1, y + j, col);
-  }
-};
 // ── 크기 프리셋: big(기본) / small — 드롭다운 ↕ 행 또는 ~/.claude/swiftbar/.batt-size 로 전환 ──
 const SIZE_FILE = `${HOME}/.claude/swiftbar/.batt-size`;
 let SIZE = "big";
@@ -168,126 +90,17 @@ try {
   if (readFileSync(SIZE_FILE, "utf8").trim() === "small") SIZE = "small";
 } catch {}
 
-// 4x6 픽셀 폰트 (big 프리셋)
-const FONT46 = {
-  0: ["0110", "1001", "1001", "1001", "1001", "0110"],
-  1: ["0010", "0110", "0010", "0010", "0010", "0111"],
-  2: ["0110", "1001", "0010", "0100", "1000", "1111"],
-  3: ["1110", "0001", "0110", "0001", "1001", "0110"],
-  4: ["0010", "0110", "1010", "1111", "0010", "0010"],
-  5: ["1111", "1000", "1110", "0001", "1001", "0110"],
-  6: ["0110", "1000", "1110", "1001", "1001", "0110"],
-  7: ["1111", "0001", "0010", "0100", "0100", "0100"],
-  8: ["0110", "1001", "0110", "1001", "1001", "0110"],
-  9: ["0110", "1001", "1001", "0111", "0001", "0110"],
-  C: ["0110", "1001", "1000", "1000", "1001", "0110"],
-  X: ["1001", "1001", "0110", "0110", "1001", "1001"],
-};
-// 3x5 클래식 픽셀 폰트 (small 프리셋)
-const FONT35 = {
-  0: ["111", "101", "101", "101", "111"],
-  1: ["010", "110", "010", "010", "111"],
-  2: ["111", "001", "111", "100", "111"],
-  3: ["111", "001", "111", "001", "111"],
-  4: ["101", "101", "111", "001", "001"],
-  5: ["111", "100", "111", "001", "111"],
-  6: ["111", "100", "111", "101", "111"],
-  7: ["111", "001", "001", "001", "001"],
-  8: ["111", "101", "111", "101", "111"],
-  9: ["111", "101", "111", "001", "111"],
-  C: ["111", "100", "100", "100", "111"],
-  X: ["101", "101", "010", "101", "101"],
-};
-// 프리셋별 지오메트리: font/자간, 캡슐(bw×bh), 배치(capw·간격), 캔버스 높이, 숫자 y오프셋
-const PRESET =
-  SIZE === "small"
-    ? { font: FONT35, adv: () => 4, bw: 14, bh: 9, capw: 16, gap: 3, ggap: 7, pad: 1, lblgap: 2, H: 9, dy: 2 }
-    : { font: FONT46, adv: (ch) => (ch === "1" ? 4 : 5), bw: 18, bh: 10, capw: 20, gap: 5, ggap: 10, pad: 2, lblgap: 3, H: 12, dy: 3 };
-const NUM = PRESET.font;
-// altCol/boundaryX 지정 시: 픽셀 x가 채움 경계(boundaryX) 왼쪽이면 altCol(밝은 채움 위 대비),
-// 오른쪽(빈 배경)이면 col. 지정 없으면 col 단색(그룹 라벨용).
-const chAdv = PRESET.adv; // big: 5px('1'만 4px 커닝 — "100" 물림 방지), small: 4px
-function drawNum(cv, x, y, str, col, altCol, boundaryX) {
-  let cx = x;
-  for (const ch of str) {
-    const g = NUM[ch];
-    if (g)
-      for (let r = 0; r < g.length; r++)
-        for (let c = 0; c < g[r].length; c++)
-          if (g[r][c] === "1") {
-            const px = cx + c;
-            cv.set(px, y + r, altCol && px < boundaryX ? altCol : col);
-          }
-    cx += chAdv(ch);
-  }
-  return cx;
-}
-const numW = (s) => [...s].reduce((w, ch) => w + chAdv(ch), 0) - 1;
-// 실제 macOS 배터리 인디케이터 색 (Apple HIG system colors, 다크/라이트 각각)
-function heatRemain(r, dark) {
-  if (r <= 20) return dark ? [255, 69, 58] : [255, 59, 48]; // systemRed
-  if (r < 50) return dark ? [255, 214, 10] : [255, 204, 0]; // systemYellow
-  return dark ? [48, 209, 88] : [52, 199, 89]; // systemGreen
-}
+// 잔량 % → 색 (5단계: 빨강→주황→노랑→라임→초록). 메뉴바 SF 배터리 틴트 + 드롭다운 게이지 공용.
 const heatRemainHex = (r) =>
-  r <= 20 ? "#FF453A" : r < 50 ? "#FFD60A" : "#30D158"; // 드롭다운 게이지 (다크 기준)
-// 캡슐 하나: 테두리 + 잔량 채움 + 안에 잔량 숫자(100 포함, 항상 표시)
-function drawCapsule(cv, x, midY, remain, ink, dark) {
-  const bw = PRESET.bw,
-    bh = PRESET.bh,
-    by = midY - Math.floor(bh / 2);
-  _stroke(cv, x, by, bw, bh, ink);
-  _rect(cv, x + bw, by + 3, 2, bh - 6, ink); // 단자
-  if (remain != null) {
-    const innerW = bw - 4;
-    const v = Math.max(0, Math.min(100, remain));
-    const fw = Math.round((v / 100) * innerW);
-    if (fw > 0) _rect(cv, x + 2, by + 2, fw, bh - 4, heatRemain(remain, dark));
-    const s = String(Math.round(v));
-    const tx = x + Math.floor((bw - numW(s)) / 2);
-    // 채움(밝은 system color) 위 픽셀은 어두운 숫자, 빈 배경 위는 ink → 어디서나 대비 확보
-    drawNum(cv, tx, midY - PRESET.dy, s, ink, [30, 30, 30], x + 2 + (fw > 0 ? fw : 0));
-  }
-  return x + bw + 2;
-}
-// 캡슐 N개(items=[{label,remain}]). 그룹(C=Claude / X=Codex) 앞에 라벨 문자.
-function renderBatteryImage(dark, items) {
-  const ink = dark ? [235, 235, 235] : [45, 45, 45];
-  const CAPW = PRESET.capw,
-    GAP = PRESET.gap,
-    GGAP = PRESET.ggap,
-    PAD = PRESET.pad,
-    LBLGAP = PRESET.lblgap;
-  const H = PRESET.H;
-  const midY = Math.floor(H / 2);
-  // 폭 계산 (그룹 라벨 포함)
-  let W = PAD * 2;
-  let pg = null;
-  for (let i = 0; i < items.length; i++) {
-    const g = items[i].label[0];
-    if (g !== pg) {
-      if (pg !== null) W += GGAP;
-      W += numW(g) + LBLGAP;
-      pg = g;
-    } else W += GAP;
-    W += CAPW;
-  }
-  const cv = makeCanvas(Math.max(W, 8), H);
-  let x = PAD;
-  pg = null;
-  for (let i = 0; i < items.length; i++) {
-    const g = items[i].label[0];
-    if (g !== pg) {
-      if (pg !== null) x += GGAP;
-      drawNum(cv, x, midY - PRESET.dy, g, ink); // 그룹 라벨 C 또는 X
-      x += numW(g) + LBLGAP;
-      pg = g;
-    } else x += GAP;
-    drawCapsule(cv, x, midY, items[i].remain, ink, dark);
-    x += CAPW;
-  }
-  return encodePNG(cv.w, cv.h, cv.buf).toString("base64");
-}
+  r <= 20
+    ? "#FF453A"
+    : r <= 40
+      ? "#FF9F0A"
+      : r <= 60
+        ? "#FFD60A"
+        : r <= 80
+          ? "#A8DB42"
+          : "#30D158";
 function isDarkMode() {
   try {
     return (
@@ -323,12 +136,6 @@ function bar(pct, w) {
   }
   s += EMPTY.repeat(Math.max(0, w - used));
   return s;
-}
-// 사용률 → 색 (GitHub 신호색)
-function heat(pct) {
-  if (pct >= 80) return "#f85149"; // 빨강
-  if (pct >= 50) return "#d29922"; // 노랑
-  return "#3fb950"; // 초록
 }
 
 // ── 공용 유틸 ──────────────────────────────────────────────
@@ -672,10 +479,44 @@ if (codex && (codex.primary || codex.secondary)) {
       : 0;
   battItems.push({ label: "X", remain });
 }
-// 잔량 숫자가 캡슐 안에 들어감 → 메뉴바는 이미지만. 라벨은 드롭다운 범례.
+// 메뉴바: 네이티브 SF Symbol 배터리 (벡터 — 어떤 화면에서도 선명, 도트 없음).
+// 채움은 SF 심볼 5단계(0/25/50/75/100), 색은 심볼별 sfcolorN. 크기 프리셋 → size=.
+const battSymbol = (r) =>
+  r == null
+    ? "battery.0"
+    : r >= 88
+      ? "battery.100"
+      : r >= 63
+        ? "battery.75"
+        : r >= 38
+          ? "battery.50"
+          : r >= 13
+            ? "battery.25"
+            : "battery.0";
+function sfBatteryLine(dark, items) {
+  const ink = dark ? "#EBEBEB" : "#2D2D2D";
+  const fontSize = SIZE === "small" ? 12 : 15; // big/small 프리셋 → SF 심볼 크기
+  const parts = [];
+  const colors = [];
+  let pg = null;
+  for (const it of items) {
+    const g = it.label[0]; // 그룹 문자 C=Claude / X=Codex
+    if (g !== pg) {
+      parts.push((pg !== null ? " " : "") + g); // 그룹 앞 라벨(시스템폰트 텍스트)
+      pg = g;
+    }
+    parts.push(`:${battSymbol(it.remain)}:`);
+    colors.push(it.remain == null ? "#8B949E" : heatRemainHex(it.remain));
+  }
+  // sfcolorN은 등장 순서대로 각 심볼에 매핑 (텍스트 라벨은 인덱스를 소비하지 않음)
+  const sf = colors
+    .map((c, i) => (i === 0 ? `sfcolor=${c}` : `sfcolor${i + 1}=${c}`))
+    .join(" ");
+  return `${parts.join(" ")} | ${sf} color=${ink} size=${fontSize}`;
+}
 // 둘 다 없으면(신규/양쪽 미사용) 배터리 대신 안내 아이콘.
 if (battItems.length) {
-  out.push(`| image=${renderBatteryImage(isDarkMode(), battItems)}`);
+  out.push(sfBatteryLine(isDarkMode(), battItems));
 } else {
   out.push("🔋 —");
 }
@@ -831,7 +672,7 @@ out.push(
   );
 }
 out.push(
-  `⭐ github.com/dennykim123/claude-codex-battery | href=https://github.com/dennykim123/claude-codex-battery size=11 color=#8b949e`,
+  `⭐ github.com/jason191188/claude-codex-battery | href=https://github.com/jason191188/claude-codex-battery size=11 color=#8b949e`,
 );
 // 위젯 끄기 — SwiftBar의 플러그인 비활성화 URL. 재활성화: SwiftBar 메뉴 → Plugins
 out.push(
