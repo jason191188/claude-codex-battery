@@ -45,7 +45,7 @@ const CODEX_SESSIONS = `${HOME}/.codex/sessions`;
 const now = Math.floor(Date.now() / 1000);
 
 // ── 자동 업데이트 (알림 + 원클릭) ──
-const VERSION = "1.4.0";
+const VERSION = "1.5.0";
 const SELF_DIR = dirname(process.argv[1] || `${HOME}/.swiftbar-plugins/x`);
 const REPO_RAW =
   "https://raw.githubusercontent.com/jason191188/claude-codex-battery/main";
@@ -88,6 +88,12 @@ const SIZE_FILE = `${HOME}/.claude/swiftbar/.batt-size`;
 let SIZE = "big";
 try {
   if (readFileSync(SIZE_FILE, "utf8").trim() === "small") SIZE = "small";
+} catch {}
+// ── 표시 모드: all(기본, 5개 전부) / 5h(현재 5시간 창만 C·X 2개) — 드롭다운 🔋 행으로 전환 ──
+const MODE_FILE = `${HOME}/.claude/swiftbar/.batt-mode`;
+let MODE = "all";
+try {
+  if (readFileSync(MODE_FILE, "utf8").trim() === "5h") MODE = "5h";
 } catch {}
 
 // 잔량 % → 색 (5단계: 빨강→주황→노랑→라임→초록). 메뉴바 SF 배터리 틴트 + 드롭다운 게이지 공용.
@@ -514,9 +520,14 @@ function sfBatteryLine(dark, items) {
     .join(" ");
   return `${parts.join(" ")} | ${sf} color=${ink} size=${fontSize}`;
 }
+// 표시 모드 5h: 현재(5시간) 창만 — C5·X5 (premium 크레딧 X는 유일한 Codex 배터리라 유지)
+const shownItems =
+  MODE === "5h"
+    ? battItems.filter((it) => ["C5", "X5", "X"].includes(it.label))
+    : battItems;
 // 둘 다 없으면(신규/양쪽 미사용) 배터리 대신 안내 아이콘.
-if (battItems.length) {
-  out.push(sfBatteryLine(isDarkMode(), battItems));
+if (shownItems.length) {
+  out.push(sfBatteryLine(isDarkMode(), shownItems));
 } else {
   out.push("🔋 —");
 }
@@ -524,9 +535,14 @@ out.push("---");
 const codexLegend =
   codex?.credits && !codex.primary && !codex.secondary
     ? "X = Codex 크레딧"
-    : "X5·XW = Codex 5시간·주간";
+    : MODE === "5h"
+      ? "X = Codex 5시간"
+      : "X5·XW = Codex 5시간·주간";
 const legendParts = [];
-if (hasClaude) legendParts.push("C5·CW·CF = Claude 5시간·주간·Fable");
+if (hasClaude)
+  legendParts.push(
+    MODE === "5h" ? "C = Claude 5시간" : "C5·CW·CF = Claude 5시간·주간·Fable",
+  );
 if (hasCodex) legendParts.push(codexLegend);
 if (legendParts.length) {
   out.push(
@@ -669,6 +685,13 @@ out.push(
   const other = SIZE === "big" ? "small" : "big";
   out.push(
     `↕ 배터리 크기: ${SIZE === "big" ? "크게 (기본)" : "작게"} — 클릭하면 ${other === "big" ? "크게" : "작게"}로 | bash=/bin/sh param1=-c param2="mkdir -p '${HOME}/.claude/swiftbar' && echo ${other} > '${SIZE_FILE}'" terminal=false refresh=true size=11 color=#8b949e`,
+  );
+}
+// 표시 모드 전환 — .batt-mode 파일에 반대 모드를 기록하고 즉시 새로고침
+{
+  const otherMode = MODE === "all" ? "5h" : "all";
+  out.push(
+    `🔋 배터리 표시: ${MODE === "all" ? "전체 (기본)" : "현재 5시간만"} — 클릭하면 ${otherMode === "all" ? "전체로" : "현재 5시간만으로"} | bash=/bin/sh param1=-c param2="mkdir -p '${HOME}/.claude/swiftbar' && echo ${otherMode} > '${MODE_FILE}'" terminal=false refresh=true size=11 color=#8b949e`,
   );
 }
 out.push(
