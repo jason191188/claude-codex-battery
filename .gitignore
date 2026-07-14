@@ -2,3 +2,7 @@
 *.log
 .codex-refresh-ts
 LX-VDA5050.required.ko.md
+# Windows Go 빌드 산출물 (소스만 커밋, 바이너리는 릴리스로)
+windows/ccb-battery.exe
+windows/ccb-tray
+*.exe
